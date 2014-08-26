@@ -1226,24 +1226,29 @@ class Frame(object):
             return None
 
     @classmethod
-    def get_selected_frame(cls):
-        _gdbframe = gdb.selected_frame()
-        if _gdbframe:
-            return Frame(_gdbframe)
-        return None
-
-    @classmethod
     def get_selected_python_frame(cls):
         '''Try to obtain the Frame for the python code in the selected frame,
         or None'''
-        frame = cls.get_selected_frame()
+        _gdbframe = gdb.selected_frame()
+        if not _gdbframe:
+            return None
+        frame = Frame(_gdbframe)
 
         while frame:
             if frame.is_evalframeex():
+                if frame.select():
+                    frame.print_summary()
                 return frame
             frame = frame.older()
 
         # Not found:
+        return None
+
+    @classmethod
+    def get_newest_frame(cls):
+        frame = gdb.newest_frame()
+        if frame:
+            return Frame(frame)
         return None
 
     def print_summary(self):
@@ -1329,60 +1334,6 @@ class PyList(gdb.Command):
 # ...and register the command:
 PyList()
 
-def move_in_stack(move_up):
-    '''Move up or down the stack (for the py-up/py-down command)'''
-    frame = Frame.get_selected_python_frame()
-    while frame:
-        if move_up:
-            iter_frame = frame.older()
-        else:
-            iter_frame = frame.newer()
-
-        if not iter_frame:
-            break
-
-        if iter_frame.is_evalframeex():
-            # Result:
-            if iter_frame.select():
-                iter_frame.print_summary()
-            return
-
-        frame = iter_frame
-
-    if move_up:
-        print 'Unable to find an older python frame'
-    else:
-        print 'Unable to find a newer python frame'
-
-class PyUp(gdb.Command):
-    'Select and print the python stack frame that called this one (if any)'
-    def __init__(self):
-        gdb.Command.__init__ (self,
-                              "py-up",
-                              gdb.COMMAND_STACK,
-                              gdb.COMPLETE_NONE)
-
-
-    def invoke(self, args, from_tty):
-        move_in_stack(move_up=True)
-
-class PyDown(gdb.Command):
-    'Select and print the python stack frame called by this one (if any)'
-    def __init__(self):
-        gdb.Command.__init__ (self,
-                              "py-down",
-                              gdb.COMMAND_STACK,
-                              gdb.COMPLETE_NONE)
-
-
-    def invoke(self, args, from_tty):
-        move_in_stack(move_up=False)
-
-# Not all builds of gdb have gdb.Frame.select
-if hasattr(gdb.Frame, 'select'):
-    PyUp()
-    PyDown()
-
 class PyBacktrace(gdb.Command):
     'Display the current python frame and all the frames within its call stack (if any)'
     def __init__(self):
@@ -1393,7 +1344,7 @@ class PyBacktrace(gdb.Command):
 
 
     def invoke(self, args, from_tty):
-        frame = Frame.get_selected_python_frame()
+        frame = Frame.get_newest_frame()
         while frame:
             if frame.is_evalframeex():
                 frame.print_summary()
